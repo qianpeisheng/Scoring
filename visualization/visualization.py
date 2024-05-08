@@ -1,4 +1,6 @@
 import open3d as o3d
+import matplotlib
+matplotlib.use('Agg')  # Set the backend to 'Agg' for non-interactive plotting (useful for running on servers without GUI)
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 

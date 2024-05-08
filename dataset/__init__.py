@@ -2,4 +2,5 @@ from dataset.shapenet import ShapeNet
 from dataset.scannet_obj_pair import ScanNetObjPair
 from dataset.scannet_obj_pair_score import ScanNetObjPairScore
 from dataset.scannet_obj_pair_score_class import ScanNetObjPairScoreCls
-
+from dataset.scannet_obj_pair_class import ScanNetObjPairCls
+from dataset.scannet_obj_pair_score_class_for_test import ScanNetObjPairScoreClsForTest

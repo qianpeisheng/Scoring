@@ -12,10 +12,10 @@ import open3d as o3d
 MAX_NUM_OBJ = 64
 MEAN_COLOR_RGB = np.array([109.8, 97.2, 83.8])
 
-class ScanNetObjPairScoreCls(data.Dataset):
+class ScanNetObjPairCls(data.Dataset):
 
     def __init__(self, split_set='train',
-        use_color=False, use_height=False, augment=False, debug=False):
+        use_color=False, use_height=False, augment=False):
 
         self.data_path = '/home1/peisheng/3detr/scannet_data/scannet/scannet_train_detection_data'
         all_scan_names = list(set([os.path.basename(x)[0:12] \
@@ -70,9 +70,6 @@ class ScanNetObjPairScoreCls(data.Dataset):
                     for i, partial_object_point_index in enumerate(v['partial']):
                         self.index_to_scene_object.append((scan_name, k, i))
 
-        if debug:
-            self.index_to_scene_object = self.index_to_scene_object[:10] # debug
-
     def __getitem__(self, index):
 
         scan_name = self.index_to_scene_object[index][0]
@@ -100,11 +97,6 @@ class ScanNetObjPairScoreCls(data.Dataset):
         complete_object_point_cloud = point_cloud[complete_object_point_index]
         partial_object_point_cloud = point_cloud[partial_object_point_index]
 
-        # score is the ratio of the number of points in the partial object to the number of points in the complete object
-        score = partial_object_point_cloud.shape[0] / complete_object_point_cloud.shape[0]
-        # convert to torch tensor
-        score = torch.tensor(score, dtype=torch.float32)
-
         # normalize complete object point cloud
         complete_object_point_cloud[:,0:3], complete_centroid, complete_m = self.normalize_point_cloud(complete_object_point_cloud[:,0:3])
 
@@ -115,7 +107,7 @@ class ScanNetObjPairScoreCls(data.Dataset):
         complete_pc = self.random_sample(complete_object_point_cloud, 16384)
 
 
-        return torch.from_numpy(partial_pc), torch.from_numpy(complete_pc), score, class_label
+        return torch.from_numpy(partial_pc), torch.from_numpy(complete_pc), class_label
 
     def __len__(self):
         return len(self.index_to_scene_object) # 154751

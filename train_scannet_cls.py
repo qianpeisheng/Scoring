@@ -9,14 +9,11 @@ import torch.optim as Optim
 from torch.utils.data.dataloader import DataLoader
 from tensorboardX import SummaryWriter
 
-from dataset.scannet_obj_pair_score_class import ScanNetObjPairScoreCls
-from models import PCNScoreCls
+from dataset.scannet_obj_pair_class import ScanNetObjPairCls
+from models import PCNCls
 from metrics.metric import l1_cd
 from metrics.loss import cd_loss_L1, emd_loss
 from visualization import plot_pcd_one_view
-
-# import mse loss for the score
-import torch.nn as nn
 
 # import classification loss
 import torch.nn.functional as F
@@ -67,15 +64,15 @@ def train(params):
 
     log(log_fd, 'Loading Data...')
 
-    train_dataset = ScanNetObjPairScoreCls('train')
-    val_dataset = ScanNetObjPairScoreCls('train')
+    train_dataset = ScanNetObjPairCls('train')
+    val_dataset = ScanNetObjPairCls('train')
 
     train_dataloader = DataLoader(train_dataset, batch_size=params.batch_size, shuffle=True, num_workers=params.num_workers)
     val_dataloader = DataLoader(val_dataset, batch_size=params.batch_size, shuffle=False, num_workers=params.num_workers)
     log(log_fd, "Dataset loaded!")
 
     # model
-    model = PCNScoreCls(num_dense=16384, latent_dim=1024, grid_size=4).to(params.device)
+    model = PCNCls(num_dense=16384, latent_dim=1024, grid_size=4).to(params.device)
 
     # optimizer
     optimizer = Optim.Adam(model.parameters(), lr=params.lr, betas=(0.9, 0.999))
@@ -89,7 +86,6 @@ def train(params):
 
     # training
     best_cd_l1 = 1e8
-    best_score_mse = 1e8
     best_classification_loss = 1e8
     best_epoch_l1 = -1
     train_step, val_step = 0, 0
@@ -104,18 +100,17 @@ def train(params):
         else:
             alpha = 1.0
 
-        lambda_score = 0.1 # hyperparameter for the score loss
         lambda_cls = 0.01 # hyperparameter for the classification loss
 
         # training
         model.train()
-        for i, (p, c, score, cls) in enumerate(train_dataloader):
-            p, c, score, cls = p.to(params.device), c.to(params.device), score.to(params.device), cls.to(params.device)
+        for i, (p, c, cls) in enumerate(train_dataloader):
+            p, c, cls = p.to(params.device), c.to(params.device), cls.to(params.device)
 
             optimizer.zero_grad()
 
             # forward propagation
-            coarse_pred, dense_pred, score_pred, cls_pred = model(p)
+            coarse_pred, dense_pred, cls_pred = model(p)
 
             # loss function
             if params.coarse_loss == 'cd':
@@ -126,23 +121,21 @@ def train(params):
             else:
                 raise ValueError('Not implemented loss {}'.format(params.coarse_loss))
 
-            loss_score = nn.MSELoss()(score_pred, score.view(-1, 1))
             loss_cls = F.cross_entropy(cls_pred, cls)
 
             loss2 = cd_loss_L1(dense_pred, c)
-            loss = loss1 + alpha * loss2 + lambda_score * loss_score + lambda_cls * loss_cls
+            loss = loss1 + alpha * loss2 + lambda_cls * loss_cls
 
             # back propagation
             loss.backward()
             optimizer.step()
 
             if (i + 1) % step == 0:
-                log(log_fd, "Training Epoch [{:03d}/{:03d}] - Iteration [{:03d}/{:03d}]: coarse loss = {:.6f}, dense l1 cd = {:.6f}, score mse {:.6f} score class {:.6f} total loss = {:.6f}"
-                    .format(epoch, params.epochs, i + 1, len(train_dataloader), loss1.item() * 1e3, loss2.item() * 1e3, loss_score.item()* 1e3, loss_cls.item()* 1e3, loss.item() * 1e3))
+                log(log_fd, "Training Epoch [{:03d}/{:03d}] - Iteration [{:03d}/{:03d}]: coarse loss = {:.6f}, dense l1 cd = {:.6f}, class {:.6f} total loss = {:.6f}"
+                    .format(epoch, params.epochs, i + 1, len(train_dataloader), loss1.item() * 1e3, loss2.item() * 1e3, loss_cls.item()* 1e3, loss.item() * 1e3))
 
             train_writer.add_scalar('coarse', loss1.item(), train_step)
             train_writer.add_scalar('dense', loss2.item(), train_step)
-            train_writer.add_scalar('score', loss_score.item(), train_step)
             train_writer.add_scalar('cls', loss_cls.item(), train_step)
             train_writer.add_scalar('total', loss.item(), train_step)
             train_step += 1
@@ -152,16 +145,14 @@ def train(params):
         # evaluation
         model.eval()
         total_cd_l1 = 0.0
-        total_score_mse = 0.0
         total_classification_loss = 0.0
         with torch.no_grad():
             rand_iter = random.randint(0, len(val_dataloader) - 1)  # for visualization
 
-            for i, (p, c, score, class_label) in enumerate(val_dataloader):
-                p, c, score, class_label = p.to(params.device), c.to(params.device), score.to(params.device), class_label.to(params.device)
-                coarse_pred, dense_pred, score_pred, class_pred = model(p)
+            for i, (p, c, class_label) in enumerate(val_dataloader):
+                p, c, class_label = p.to(params.device), c.to(params.device), class_label.to(params.device)
+                coarse_pred, dense_pred, class_pred = model(p)
                 total_cd_l1 += l1_cd(dense_pred, c).item()
-                total_score_mse += nn.MSELoss()(score_pred, score.view(-1, 1)).item()
                 total_classification_loss += F.cross_entropy(class_pred, class_label).item()
 
                 # save into image
@@ -172,24 +163,17 @@ def train(params):
                                       ['Input', 'Coarse', 'Dense', 'Ground Truth'], xlim=(-0.35, 0.35), ylim=(-0.35, 0.35), zlim=(-0.35, 0.35))
 
             total_cd_l1 /= len(val_dataset)
-            total_score_mse /= len(val_dataset)
             total_classification_loss /= len(val_dataset)
             val_writer.add_scalar('l1_cd', total_cd_l1, val_step)
-            val_writer.add_scalar('score_mse', total_score_mse, val_step)
             val_writer.add_scalar('cls', total_classification_loss, val_step)
             val_step += 1
 
-            log(log_fd, "Validate Epoch [{:03d}/{:03d}]: L1 Chamfer Distance = {:.6f} MSE = {:.6f} CLS = {:.6f}".format(epoch, params.epochs, total_cd_l1 * 1e3, total_score_mse * 1e3, total_classification_loss * 1e3))
+            log(log_fd, "Validate Epoch [{:03d}/{:03d}]: L1 Chamfer Distance = {:.6f} CLS = {:.6f}".format(epoch, params.epochs, total_cd_l1 * 1e3, total_classification_loss * 1e3))
 
         if total_cd_l1 < best_cd_l1:
             best_epoch_l1 = epoch
             best_cd_l1 = total_cd_l1
             torch.save(model.state_dict(), os.path.join(ckpt_dir, 'best_l1_cd.pth'))
-
-        if total_score_mse < best_score_mse:
-            best_epoch_score = epoch
-            best_score_mse = total_score_mse
-            torch.save(model.state_dict(), os.path.join(ckpt_dir, 'best_score_mse.pth'))
 
         if total_classification_loss < best_classification_loss:
             best_epoch_cls = epoch
@@ -197,7 +181,6 @@ def train(params):
             torch.save(model.state_dict(), os.path.join(ckpt_dir, 'best_cls.pth'))
 
     log(log_fd, 'Best l1 cd model in epoch {}, the minimum l1 cd is {}'.format(best_epoch_l1, best_cd_l1 * 1e3))
-    log(log_fd, 'Best score mse model in epoch {}, the minimum score mse is {}'.format(best_epoch_score, best_score_mse * 1e3))
     log(log_fd, 'Best classification model in epoch {}, the minimum classification loss is {}'.format(best_epoch_cls, best_classification_loss * 1e3))
 
     log_fd.close()

@@ -12,10 +12,13 @@ import open3d as o3d
 MAX_NUM_OBJ = 64
 MEAN_COLOR_RGB = np.array([109.8, 97.2, 83.8])
 
-class ScanNetObjPairScoreCls(data.Dataset):
+class_names = ['wall', 'floor', 'cabinet', 'bed', 'chair', 'sofa', 'table', 'door', 'window', 'bookshelf', 'picture', 'counter', 'blinds', 'desk', 'shelves', 'curtain', 'dresser', 'pillow', 'mirror', 'floor mat', 'clothes', 'ceiling', 'books', 'refridgerator', 'television', 'paper', 'towel', 'shower curtain', 'box', 'whiteboard', 'person', 'nightstand', 'toilet', 'sink', 'lamp', 'bathtub', 'bag', 'otherstructure', 'otherfurniture', 'otherprop']
+class_indexes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39]
+
+class ScanNetObjPairScoreClsForTest(data.Dataset):
 
     def __init__(self, split_set='train',
-        use_color=False, use_height=False, augment=False, debug=False):
+        use_color=False, use_height=False, augment=False, debug=False, scene_name=None):
 
         self.data_path = '/home1/peisheng/3detr/scannet_data/scannet/scannet_train_detection_data'
         all_scan_names = list(set([os.path.basename(x)[0:12] \
@@ -31,7 +34,7 @@ class ScanNetObjPairScoreCls(data.Dataset):
             num_scans = len(self.scan_names)
             self.scan_names = [sname for sname in self.scan_names \
                 if sname in all_scan_names]
-            print('kept {} scans out of {}'.format(len(self.scan_names), num_scans))
+            # print('kept {} scans out of {}'.format(len(self.scan_names), num_scans))
             num_scans = len(self.scan_names)
         else:
             print('illegal split name')
@@ -50,6 +53,11 @@ class ScanNetObjPairScoreCls(data.Dataset):
         if 'scene0444_01' in self.scan_names:
             self.scan_names.remove('scene0444_01')
 
+        # filter self.scan_names to the one that contains the scene_name
+        self.scene_name = scene_name
+        self.scan_names = [sname for sname in self.scan_names if sname == self.scene_name]
+        print('scan_names:', self.scan_names)
+
         for scan_name in self.scan_names:
             current_file_name = os.path.join(self.object_path, scan_name + '.npy')
             scene_objects = np.load(current_file_name, allow_pickle=True).item()
@@ -66,22 +74,22 @@ class ScanNetObjPairScoreCls(data.Dataset):
         for scan_name in self.scan_names:
             scene_objects = self.scene_object_dict[scan_name]
             for k, v in scene_objects.items():
-                if len(v['partial']) > 0:
-                    for i, partial_object_point_index in enumerate(v['partial']):
-                        self.index_to_scene_object.append((scan_name, k, i))
+                self.index_to_scene_object.append((scan_name, k))
+
+        print('number of objects:', len(self.index_to_scene_object))
 
         if debug:
             self.index_to_scene_object = self.index_to_scene_object[:10] # debug
 
     def __getitem__(self, index):
+        # for testing, we just need the complete object point cloud
 
         scan_name = self.index_to_scene_object[index][0]
         mesh_vertices = np.load(os.path.join(self.data_path, scan_name)+'_vert.npy')
         instance_bboxes = np.load(os.path.join(self.data_path, scan_name)+'_bbox.npy')
 
-        scan_name, complete_index, partial_index = self.index_to_scene_object[index]
+        scan_name, complete_index = self.index_to_scene_object[index]
         complete_object_point_index = self.scene_object_dict[scan_name][complete_index]['complete']
-        partial_object_point_index = self.scene_object_dict[scan_name][complete_index]['partial'][partial_index]
 
         # index of the object is the complete object index. Get the class label of the object
         class_label = instance_bboxes[complete_index][-1]
@@ -92,30 +100,21 @@ class ScanNetObjPairScoreCls(data.Dataset):
 
         if not self.use_color:
             point_cloud = mesh_vertices[:,0:3] # do not use color for now
-            pcl_color = mesh_vertices[:,3:6]
         else:
             point_cloud = mesh_vertices[:,0:6]
             point_cloud[:,3:] = (point_cloud[:,3:]-MEAN_COLOR_RGB)/256.0
 
         complete_object_point_cloud = point_cloud[complete_object_point_index]
-        partial_object_point_cloud = point_cloud[partial_object_point_index]
 
-        # score is the ratio of the number of points in the partial object to the number of points in the complete object
-        score = partial_object_point_cloud.shape[0] / complete_object_point_cloud.shape[0]
-        # convert to torch tensor
+        score = 1.
         score = torch.tensor(score, dtype=torch.float32)
 
         # normalize complete object point cloud
         complete_object_point_cloud[:,0:3], complete_centroid, complete_m = self.normalize_point_cloud(complete_object_point_cloud[:,0:3])
 
-        # use complete object centroid and m to normalize partial object point cloud
-        partial_object_point_cloud[:,0:3] = (partial_object_point_cloud[:,0:3] - complete_centroid) / complete_m
-
-        partial_pc = self.random_sample(partial_object_point_cloud, 2048) # TODO these two numbers might need to be changed
         complete_pc = self.random_sample(complete_object_point_cloud, 16384)
 
-
-        return torch.from_numpy(partial_pc), torch.from_numpy(complete_pc), score, class_label
+        return torch.from_numpy(complete_pc), torch.from_numpy(complete_pc), score, class_label
 
     def __len__(self):
         return len(self.index_to_scene_object) # 154751

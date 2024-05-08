@@ -90,6 +90,12 @@ class ScanNetObjPair(data.Dataset):
         complete_object_point_cloud = point_cloud[complete_object_point_index]
         partial_object_point_cloud = point_cloud[partial_object_point_index]
 
+        # normalize complete object point cloud
+        complete_object_point_cloud[:,0:3], complete_centroid, complete_m = self.normalize_point_cloud(complete_object_point_cloud[:,0:3])
+
+        # use complete object centroid and m to normalize partial object point cloud
+        partial_object_point_cloud[:,0:3] = (partial_object_point_cloud[:,0:3] - complete_centroid) / complete_m
+
         partial_pc = self.random_sample(partial_object_point_cloud, 2048) # TODO these two numbers might need to be changed
         complete_pc = self.random_sample(complete_object_point_cloud, 16384)
 
@@ -105,6 +111,12 @@ class ScanNetObjPair(data.Dataset):
             idx = np.concatenate([idx, np.random.randint(pc.shape[0], size=n-pc.shape[0])])
         return pc[idx[:n]]
 
+    def normalize_point_cloud(self, pc):
+        centroid = np.mean(pc, axis=0)
+        pc = pc - centroid
+        m = np.max(np.sqrt(np.sum(pc**2, axis=1)))
+        pc = pc / m
+        return pc, centroid, m
 
 if __name__ == "__main__":
     dataset = ScanNetObjPair('train')

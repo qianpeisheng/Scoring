@@ -86,6 +86,8 @@ def train(params):
 
     # training
     best_cd_l1 = 1e8
+    best_score_mse = 1e8
+
     best_epoch_l1 = -1
     train_step, val_step = 0, 0
     for epoch in range(1, params.epochs + 1):
@@ -143,13 +145,15 @@ def train(params):
         # evaluation
         model.eval()
         total_cd_l1 = 0.0
+        total_score_mse = 0.0
         with torch.no_grad():
             rand_iter = random.randint(0, len(val_dataloader) - 1)  # for visualization
 
-            for i, (p, c) in enumerate(val_dataloader):
-                p, c = p.to(params.device), c.to(params.device)
-                coarse_pred, dense_pred = model(p)
+            for i, (p, c, score) in enumerate(val_dataloader):
+                p, c, score = p.to(params.device), c.to(params.device), score.to(params.device)
+                coarse_pred, dense_pred, score_pred = model(p)
                 total_cd_l1 += l1_cd(dense_pred, c).item()
+                total_score_mse += nn.MSELoss()(score_pred, score.view(-1, 1)).item()
 
                 # save into image
                 if rand_iter == i:
@@ -159,17 +163,26 @@ def train(params):
                                       ['Input', 'Coarse', 'Dense', 'Ground Truth'], xlim=(-0.35, 0.35), ylim=(-0.35, 0.35), zlim=(-0.35, 0.35))
 
             total_cd_l1 /= len(val_dataset)
+            total_score_mse /= len(val_dataset)
             val_writer.add_scalar('l1_cd', total_cd_l1, val_step)
+            val_writer.add_scalar('score_mse', total_score_mse, val_step)
             val_step += 1
 
-            log(log_fd, "Validate Epoch [{:03d}/{:03d}]: L1 Chamfer Distance = {:.6f}".format(epoch, params.epochs, total_cd_l1 * 1e3))
+            log(log_fd, "Validate Epoch [{:03d}/{:03d}]: L1 Chamfer Distance = {:.6f} MSE = {:.6f}".format(epoch, params.epochs, total_cd_l1 * 1e3, total_score_mse * 1e3))
 
         if total_cd_l1 < best_cd_l1:
             best_epoch_l1 = epoch
             best_cd_l1 = total_cd_l1
             torch.save(model.state_dict(), os.path.join(ckpt_dir, 'best_l1_cd.pth'))
 
+        if total_score_mse < best_score_mse:
+            best_epoch_score = epoch
+            best_score_mse = total_score_mse
+            torch.save(model.state_dict(), os.path.join(ckpt_dir, 'best_score_mse.pth'))
+
     log(log_fd, 'Best l1 cd model in epoch {}, the minimum l1 cd is {}'.format(best_epoch_l1, best_cd_l1 * 1e3))
+    log(log_fd, 'Best score mse model in epoch {}, the minimum score mse is {}'.format(best_epoch_score, best_score_mse * 1e3))
+
     log_fd.close()
 
 
