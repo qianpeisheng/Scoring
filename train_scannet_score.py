@@ -65,7 +65,7 @@ def train(params):
     log(log_fd, 'Loading Data...')
 
     train_dataset = ScanNetObjPairScore('train')
-    val_dataset = ScanNetObjPairScore('train')
+    val_dataset = ScanNetObjPairScore('val')
 
     train_dataloader = DataLoader(train_dataset, batch_size=params.batch_size, shuffle=True, num_workers=params.num_workers)
     val_dataloader = DataLoader(val_dataset, batch_size=params.batch_size, shuffle=False, num_workers=params.num_workers)

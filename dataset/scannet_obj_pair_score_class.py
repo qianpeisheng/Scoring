@@ -11,19 +11,22 @@ import open3d as o3d
 
 MAX_NUM_OBJ = 64
 MEAN_COLOR_RGB = np.array([109.8, 97.2, 83.8])
+OBJECT_PATH_TRAIN = '/home1/peisheng/occulusion_sim/DODA/scannet_object_complete_partial_35_class'
+OBJECT_PATH_VAL = '/home1/peisheng/occulusion_sim/DODA/scannet_object_complete_partial_val_set_35_class'
 
 class ScanNetObjPairScoreCls(data.Dataset):
 
     def __init__(self, split_set='train',
         use_color=False, use_height=False, augment=False, debug=False):
+        self.split_set = split_set
 
-        self.data_path = '/home1/peisheng/3detr/scannet_data/scannet/scannet_train_detection_data'
+        self.data_path = f'/home1/peisheng/occulusion_sim/40_cls_data/scannet/scannet_{split_set}_detection_data40'
         all_scan_names = list(set([os.path.basename(x)[0:12] \
             for x in os.listdir(self.data_path) if x.startswith('scene')]))
         if split_set=='all':
             self.scan_names = all_scan_names
         elif split_set in ['train', 'val', 'test']:
-            split_filenames = os.path.join('/home1/peisheng/3detr/scannet_data/scannet/meta_data',
+            split_filenames = os.path.join('/home1/peisheng/occulusion_sim/40_cls_data/scannet/meta_data',
                 'scannetv2_{}.txt'.format(split_set))
             with open(split_filenames, 'r') as f:
                 self.scan_names = f.read().splitlines()
@@ -42,7 +45,13 @@ class ScanNetObjPairScoreCls(data.Dataset):
         self.augment = augment
 
         # the code above is for scenes, the code below is for objects
-        self.object_path = '/home1/peisheng/occulusion_sim/DODA/scannet_object_complete_partial'
+        if self.split_set == 'train':
+            self.object_path = OBJECT_PATH_TRAIN
+        elif self.split_set == 'val':
+            self.object_path = OBJECT_PATH_VAL
+        else:
+            print('illegal split name')
+            return
         # loop through all the scenes
         self.scene_object_dict = {}
 
@@ -136,7 +145,7 @@ class ScanNetObjPairScoreCls(data.Dataset):
 
 
 if __name__ == "__main__":
-    dataset = ScanNetObjPair('train')
+    dataset = ScanNetObjPairScoreCls('train')
     print(len(dataset))
     import pdb; pdb.set_trace()
     partial_pc, complete_pc = dataset[0]

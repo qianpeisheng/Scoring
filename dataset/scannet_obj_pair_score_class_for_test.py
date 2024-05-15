@@ -15,18 +15,22 @@ MEAN_COLOR_RGB = np.array([109.8, 97.2, 83.8])
 class_names = ['wall', 'floor', 'cabinet', 'bed', 'chair', 'sofa', 'table', 'door', 'window', 'bookshelf', 'picture', 'counter', 'blinds', 'desk', 'shelves', 'curtain', 'dresser', 'pillow', 'mirror', 'floor mat', 'clothes', 'ceiling', 'books', 'refridgerator', 'television', 'paper', 'towel', 'shower curtain', 'box', 'whiteboard', 'person', 'nightstand', 'toilet', 'sink', 'lamp', 'bathtub', 'bag', 'otherstructure', 'otherfurniture', 'otherprop']
 class_indexes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39]
 
+OBJECT_PATH_TRAIN = '/home1/peisheng/occulusion_sim/DODA/scannet_object_complete_partial_35_class'
+OBJECT_PATH_VAL = '/home1/peisheng/occulusion_sim/DODA/scannet_object_complete_partial_val_set_35_class'
+
 class ScanNetObjPairScoreClsForTest(data.Dataset):
 
-    def __init__(self, split_set='train',
+    def __init__(self, split_set='val',
         use_color=False, use_height=False, augment=False, debug=False, scene_name=None):
+        self.split_set = split_set
 
-        self.data_path = '/home1/peisheng/3detr/scannet_data/scannet/scannet_train_detection_data'
+        self.data_path = f'/home1/peisheng/occulusion_sim/40_cls_data/scannet/scannet_{split_set}_detection_data40'
         all_scan_names = list(set([os.path.basename(x)[0:12] \
             for x in os.listdir(self.data_path) if x.startswith('scene')]))
         if split_set=='all':
             self.scan_names = all_scan_names
         elif split_set in ['train', 'val', 'test']:
-            split_filenames = os.path.join('/home1/peisheng/3detr/scannet_data/scannet/meta_data',
+            split_filenames = os.path.join('/home1/peisheng/occulusion_sim/40_cls_data/scannet/meta_data',
                 'scannetv2_{}.txt'.format(split_set))
             with open(split_filenames, 'r') as f:
                 self.scan_names = f.read().splitlines()
@@ -45,7 +49,13 @@ class ScanNetObjPairScoreClsForTest(data.Dataset):
         self.augment = augment
 
         # the code above is for scenes, the code below is for objects
-        self.object_path = '/home1/peisheng/occulusion_sim/DODA/scannet_object_complete_partial'
+        if self.split_set == 'train':
+            self.object_path = OBJECT_PATH_TRAIN
+        elif self.split_set == 'val':
+            self.object_path = OBJECT_PATH_VAL
+        else:
+            print('illegal split name')
+            return
         # loop through all the scenes
         self.scene_object_dict = {}
 
@@ -135,11 +145,17 @@ class ScanNetObjPairScoreClsForTest(data.Dataset):
 
 
 if __name__ == "__main__":
-    dataset = ScanNetObjPair('train')
+    dataset = ScanNetObjPairScoreClsForTest('train')
     print(len(dataset))
+    # loop through the dataset and get all class_labels in a set
+    class_labels = set()
+    for i in range(len(dataset)):
+        _, _, _, class_label = dataset[i]
+        class_labels.add(class_label.item())
+    
     import pdb; pdb.set_trace()
-    partial_pc, complete_pc = dataset[0]
-    print(partial_pc.shape)
-    print(complete_pc.shape)
-    print(partial_pc)
-    print(complete_pc)
+    # partial_pc, complete_pc = dataset[0]
+    # print(partial_pc.shape)
+    # print(complete_pc.shape)
+    # print(partial_pc)
+    # print(complete_pc)

@@ -11,19 +11,23 @@ import open3d as o3d
 
 MAX_NUM_OBJ = 64
 MEAN_COLOR_RGB = np.array([109.8, 97.2, 83.8])
+OBJECT_PATH_TRAIN = '/home1/peisheng/occulusion_sim/DODA/scannet_object_complete_partial_35_class'
+OBJECT_PATH_VAL = '/home1/peisheng/occulusion_sim/DODA/scannet_object_complete_partial_val_set_35_class'
 
 class ScanNetObjPairCls(data.Dataset):
 
     def __init__(self, split_set='train',
         use_color=False, use_height=False, augment=False):
+        self.split_set = split_set
 
-        self.data_path = '/home1/peisheng/3detr/scannet_data/scannet/scannet_train_detection_data'
+        # self.data_path = f'/home1/peisheng/occulusion_sim/40_cls_data/scannet/scannet_{split_set}_detection_data'
+        self.data_path = f'/home1/peisheng/occulusion_sim/40_cls_data/scannet/scannet_{split_set}_detection_data40'
         all_scan_names = list(set([os.path.basename(x)[0:12] \
             for x in os.listdir(self.data_path) if x.startswith('scene')]))
         if split_set=='all':
             self.scan_names = all_scan_names
         elif split_set in ['train', 'val', 'test']:
-            split_filenames = os.path.join('/home1/peisheng/3detr/scannet_data/scannet/meta_data',
+            split_filenames = os.path.join('/home1/peisheng/occulusion_sim/40_cls_data/scannet/meta_data',
                 'scannetv2_{}.txt'.format(split_set))
             with open(split_filenames, 'r') as f:
                 self.scan_names = f.read().splitlines()
@@ -42,7 +46,13 @@ class ScanNetObjPairCls(data.Dataset):
         self.augment = augment
 
         # the code above is for scenes, the code below is for objects
-        self.object_path = '/home1/peisheng/occulusion_sim/DODA/scannet_object_complete_partial'
+        if self.split_set == 'train':
+            self.object_path = OBJECT_PATH_TRAIN
+        elif self.split_set == 'val':
+            self.object_path = OBJECT_PATH_VAL
+        else:
+            print('illegal split name')
+            return
         # loop through all the scenes
         self.scene_object_dict = {}
 
@@ -75,7 +85,6 @@ class ScanNetObjPairCls(data.Dataset):
         scan_name = self.index_to_scene_object[index][0]
         mesh_vertices = np.load(os.path.join(self.data_path, scan_name)+'_vert.npy')
         instance_bboxes = np.load(os.path.join(self.data_path, scan_name)+'_bbox.npy')
-
         scan_name, complete_index, partial_index = self.index_to_scene_object[index]
         complete_object_point_index = self.scene_object_dict[scan_name][complete_index]['complete']
         partial_object_point_index = self.scene_object_dict[scan_name][complete_index]['partial'][partial_index]
